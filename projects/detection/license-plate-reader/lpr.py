@@ -86,6 +86,31 @@ class LicensePlateReader:
 
             self.debug_imshow("License Plate", licensePlate)
             self.debug_imshow("Region Of Interest", regionOfInterest, waitKey=True)
-            break;
+            break
         
         return (regionOfInterest, licensePlateContour)
+
+    
+    def set_tesseract_options(self, psm=7):
+
+        alpha_numeric_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        options = "-c tessedit_char_whitelist={}".format(alpha_numeric_chars)
+        options += " --psm {}".format(psm)
+
+        return options
+
+
+    def find_and_extract_text(self, image, psm=7, clearBorder=False):
+        
+        licensePlateText = None
+
+        grayImage = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        candidates = self.get_license_plate_candidate_regions(grayImage)
+        (licensePlate, licensePlateContour) = self.locate_license_plate(grayImage, candidates, clearBorder=clearBorder)
+
+        if licensePlate is not None:
+            options = self.set_tesseract_options(psm=psm)
+            licensePlateText = pytesseract.image_to_string(licensePlate, config=options)
+            self.debug_imshow("License Plate", licensePlate)
+
+        return (licensePlateText, licensePlateContour)
