@@ -7,6 +7,14 @@
 
 ## Optical Character Recognition (OCR)
 
+### Page Segmentation Method (PSM)
+- Setting that indicates layout analysis mode for the document / image.
+- There are 13 modes of operation.
+- The 7th: Treat the image as a single text line.
+
+### Whitelist
+- A listing of characters (i.e. letters, digits, symbols) that Tesseract will consider.
+
 ## Strategy
 - Detect and localize a license plate in an input image.
 - Extract the characters from the license plate.
