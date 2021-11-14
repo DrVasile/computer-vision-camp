@@ -139,3 +139,6 @@ pip-selfcheck.json
 
 # Personal Data Sets
 /data
+
+# VSCode
+.vscode

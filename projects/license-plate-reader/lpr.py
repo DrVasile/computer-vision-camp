@@ -4,64 +4,61 @@ import numpy
 import pytesseract
 
 from skimage.segmentation import clear_border
+from lpr_debbuger import LPRDebugger
 
 
 
+# The class that contains the methods for reading license plate text from images.
+# As parameters to the constructor it accepts values that correspond to the aspect ratio of rectangular plates.
 class LicensePlateReader:
     
     
-    def __init__(self, minAspectRatio=4, maxAspectRatio=5, debugMode=False):
+    def __init__(self, minAspectRatio=4, maxAspectRatio=5, debugModeOn=True):
         
         self.minAspectRatio = minAspectRatio # The minimum aspect ratio used to detect and filter license plates.
-        self.maxAspectRatio = maxAspectRatio # The maximum ...                  
-        self.debugMode = debugMode           # A flag value used to display intermediate results.
+        self.maxAspectRatio = maxAspectRatio # The maximum aspect ratio used to detect and filter license plates. 
+        self.debugModeOn = debugModeOn       # A flag value used to display intermediate results
+        self.debbugger = LPRDebugger()
         
-        
-    def debug_imshow(self, title, image, waitKey=False):
-        
-        if self.debugMode:
-            cv2.imshow(title, image)
-            
-            if waitKey:
-                cv2.waitKey(0)
-                
-                
-    def get_license_plate_candidate_regions(self, grayImage, contoursCnt=5):
+
+    # The method that contains the image processing pipeline.
+    # Also, it finds the contour candidates from the image.
+    def find_license_plate_candidate_regions(self, grayImage, contoursCnt=5):
         
         rectangleKernel = cv2.getStructuringElement(cv2.MORPH_RECT, (13, 5))
-        blackHat = cv2.morphologyEx(grayImage, cv2.MORPH_BLACKHAT, rectangleKernel)
-        self.debug_imshow("Black Hat", blackHat)
+        blackHatImage = cv2.morphologyEx(grayImage, cv2.MORPH_BLACKHAT, rectangleKernel)
+        self.debugger.debug_imshow("Black Hat", blackHatImage)
         
         squareKernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-        morphCloseImage = cv2.morphologyEx(grayImage, cv2.MORPH_CLOSE, squareKernel)
-        thresholdImage = cv2.threshold(morphCloseImage, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
-        self.debug_imshow("Black Hat", thresholdImage)
+        lightRegions = cv2.morphologyEx(grayImage, cv2.MORPH_CLOSE, squareKernel)
+        lightRegions = cv2.threshold(lightRegions, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
+        self.debugger.debug_imshow("Light Regions", lightRegions)
         
-        gradientX = cv2.Sobel(blackHat, ddepth=cv2.CV_32F, dx=1, dy=0, ksize=-1)
-        gradientX = numpy.absolute(gradientX)
+        gradientXImage = cv2.Sobel(blackHatImage, ddepth=cv2.CV_32F, dx=1, dy=0, ksize=-1)
+        gradientXImage = numpy.absolute(gradientXImage)
+        minValue = numpy.min(gradientXImage)
+        maxValue = numpy.max(gradientXImage)
+        gradientXImage = 255 * ((gradientXImage - minValue) / (maxValue - minValue))
+        gradientXImage = gradientXImage.asType("uint8")
+        self.debugger.debug_imshow("Scharr Filter on X axis", gradientXImage)
         
-        minValue = numpy.min(gradientX)
-        maxValue = numpy.max(gradientX)
-        
-        gradientX = 255 * ((gradientX - minValue) / (maxValue - minValue))
-        gradientX = gradientX.asType("uint8")
-        self.debug_imshow("Scharr", gradientX)
-        
-        gradientX = cv2.GaussianBlur(gradientX, (5, 5), 0)
-        gradientX = cv2.morphologyEx(gradientX, cv2.MORPH_CLOSE, rectangleKernel)
-        thresholdGradient = cv2.threshold(gradientX, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
-        self.debug_imshow("Gradient Threshold", thresholdGradient)
+        gradientXImage = cv2.GaussianBlur(gradientXImage, (5, 5), 0)
+        gradientXImage = cv2.morphologyEx(gradientXImage, cv2.MORPH_CLOSE, rectangleKernel)
+        thresholdGradientXImage = cv2.threshold(gradientXImage, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
+        self.debugger.debug_imshow("Threshold on the Gradient X image", thresholdGradientXImage)
 
-        thresholdGradient = cv2.erode(thresholdGradient, None, iterations=2)
-        thresholdGradient = cv2.dilate(thresholdGradient, None, iterations=2)
-        self.debug_imshow("Gradient Erode / Dilate", thresholdGradient)
+        # TODO substitute with Open
+        thresholdGradientXImage = cv2.erode(thresholdGradientXImage, None, iterations=2)
+        thresholdGradientXImage = cv2.dilate(thresholdGradientXImage, None, iterations=2)
+        self.debugger.debug_imshow("Threshold GradientX Image after Erode & Dilate", thresholdGradientXImage)
 
-        thresholdGradient = cv2.bitwise_and(thresholdGradient, thresholdGradient, mask=thresholdImage)
-        thresholdGradient = cv2.dilate(thresholdGradient, None, iterations=2)
-        thresholdGradient = cv2.erode(thresholdGradient, None, iterations=2)
-        self.debug_imshow("Final", thresholdGradient, waitKey=True)
+        thresholdGradientXImage = cv2.bitwise_and(thresholdGradientXImage, thresholdGradientXImage, mask=lightRegions)
+        # TODO substitute with Close
+        thresholdGradientXImage = cv2.dilate(thresholdGradientXImage, None, iterations=2)
+        thresholdGradientXImage = cv2.erode(thresholdGradientXImage, None, iterations=2)
+        self.debugger.debug_imshow("Final Image", thresholdGradientXImage, waitKey=True)
 
-        contours = cv2.findContours(thresholdGradient.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours = cv2.findContours(thresholdGradientXImage.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         contours = imutils.grab_contours(contours)
         contours = sorted(contours, key=cv2.contourArea, reverse=True)[:contoursCnt]
 
@@ -69,29 +66,34 @@ class LicensePlateReader:
 
 
     def locate_license_plate(self, grayImage, candidates, clearBorder=False):
+
         licensePlateContour = None
         regionOfInterest = None
 
         for candidate in candidates:
+
             (x, y, w, h) = cv2.boundingRect(candidate)
-            aspectRatio = w / float(h)
+            aspectRatio = float(w) / float(h)
 
             if aspectRatio >= self.minAspectRatio and aspectRatio <= self.maxAspectRatio:
+
                 licensePlateContour = candidate
-                licensePlate = grayImage[y:y+h, x:x+w]
-                regionOfInterest = cv2.threshold(licensePlate, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
+                licensePlateSnip = grayImage[y:y + h, x:x + w]
+                self.debugger.debug_imshow("License Plate Snip", licensePlateSnip)
 
-            if clearBorder:
-                regionOfInterest = clear_border(regionOfInterest)
+                regionOfInterest = cv2.threshold(licensePlateSnip, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
 
-            self.debug_imshow("License Plate", licensePlate)
-            self.debug_imshow("Region Of Interest", regionOfInterest, waitKey=True)
-            break
+                if clearBorder:
+
+                    regionOfInterest = clear_border(regionOfInterest)
+
+                self.debugger.debug_imshow("Region Of Interest", regionOfInterest, waitKey=True)
+                break
         
         return (regionOfInterest, licensePlateContour)
 
     
-    def set_tesseract_options(self, psm=7):
+    def get_tesseract_options(self, psm=7):
 
         alpha_numeric_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
         options = "-c tessedit_char_whitelist={}".format(alpha_numeric_chars)
@@ -105,12 +107,12 @@ class LicensePlateReader:
         licensePlateText = None
 
         grayImage = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        candidates = self.get_license_plate_candidate_regions(grayImage)
-        (licensePlate, licensePlateContour) = self.locate_license_plate(grayImage, candidates, clearBorder=clearBorder)
+        candidates = self.find_license_plate_candidate_regions(grayImage)
+        (regionOfInterest, licensePlateContour) = self.locate_license_plate(grayImage, candidates, clearBorder=clearBorder)
 
-        if licensePlate is not None:
-            options = self.set_tesseract_options(psm=psm)
-            licensePlateText = pytesseract.image_to_string(licensePlate, config=options)
-            self.debug_imshow("License Plate", licensePlate)
+        if regionOfInterest is not None:
+            options = self.get_tesseract_options(psm=psm)
+            licensePlateText = pytesseract.image_to_string(regionOfInterest, config=options)
+            self.debugger.debug_imshow("License Plate Region Of Interest", regionOfInterest)
 
         return (licensePlateText, licensePlateContour)
